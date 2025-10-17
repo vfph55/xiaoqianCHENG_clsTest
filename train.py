@@ -1,7 +1,7 @@
 import torch 
 import torch.optim as optim
 import torch.nn as nn
-import torchvision.transforms as transforms
+from torchvision import transforms,models
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
@@ -9,10 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 
-LR = 1e-3
-BATCH_SIZE = 64
-EPOCHS = 20
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+"""训练二分类器(仅包含CHC和白细胞数据)，置信度低的归为癌细胞的train.py (using resnet18)"""
 
 # TRAIN_FILE_PATHS = [
 #     '/F00120250015/cell_datasets/dataset_zkw/test/251011/folds_new/fold_1.csv',
@@ -20,8 +17,8 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 #     '/F00120250015/cell_datasets/dataset_zkw/test/251011/folds_new/fold_3.csv'
 # ]
 TRAIN_FILE_PATHS = [
-    '/F00120250015/cell_datasets/dataset_zkw/test/251011/folds_new/fold_1.csv'
-]
+        '/F00120250015/cell_datasets/dataset_zkw/test/251011/folds_new/fold_1.csv'
+    ]
 VAL_FILE_PATH = '/F00120250015/cell_datasets/dataset_zkw/test/251011/folds_new/fold_4.csv'
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -47,8 +44,8 @@ def get_transforms(train=True):
     
     return transform
 
-# 自定义数据集类（使用均值填充）
 class cellDataset(Dataset):
+    """自定义数据集类（使用均值填充）、自定义标签分配"""
     def __init__(self, dataframe, transform=None, target_size=224, num_classes=3):
         
         self.data = dataframe
@@ -103,8 +100,10 @@ class cellDataset(Dataset):
     
     
 
-# 加载数据
+
 def load_csv(train_csv_paths, val_csv_path):
+    """ 返回训练集和验证集的df"""
+    
     # 加载训练集和验证集
     print('\nloading training dataset...')
     train_dfs = []
@@ -192,9 +191,49 @@ def train_epoch(model,dataloader,criterion,optimizer,device):
 
 # 验证函数
 # def validate()
+
+def main():
+    lr = 1e-3
+    batch_size = 64
+    epochs = 20
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    target_size = 224
+    confident_threshold = 0.7
+    
+    print("="*60)
+    # 1. 加载数据
+    train_df, val_df = load_csv(train_csv_paths=TRAIN_FILE_PATHS, val_csv_path=VAL_FILE_PATH)
+    train_dataset_binary = cellDataset(train_df,transform=get_transforms(train=True),target_size=224,num_classes=2)
+    val_dataset_binary = cellDataset(val_df, transform=get_transforms(train=False), target_size=target_size, num_classes=2)
+    
+    train_loader_binary = DataLoader(train_dataset_binary, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    val_loader_binary = DataLoader(val_dataset_binary, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
+    
+    # 创建二分类类型
+    model_binary = models.resnet18(pretrained=True)
+    num_features = model_binary.fc.in_features
+    
+    model_binary.fc = nn.Linear(num_features, 2)
+    model_binary.to(device=device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer_binary = optim.Adam(model_binary.parameters(),lr=lr)
+    scheduler_binary = optim.lr_scheduler.ReduceLROnPlateau(optimizer_binary, mode='min', 
+                                                             patience=5, factor=0.5, verbose=True)
+    print("start training (binary model)...")
+    
+    
+    
+    
+    
+
+    
           
 
-load_csv(train_csv_paths=TRAIN_FILE_PATHS, val_csv_path=VAL_FILE_PATH)
+# load_csv(train_csv_paths=TRAIN_FILE_PATHS, val_csv_path=VAL_FILE_PATH)
+if __name__=='__main__':
+    main()
+    
+    
 
     
     
